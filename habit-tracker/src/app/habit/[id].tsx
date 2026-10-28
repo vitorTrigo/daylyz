@@ -1,3 +1,5 @@
+import ContributionGraph from '../../components/ContributionGraph';
+import MonthlyCalendar from '../../components/MonthlyCalendar';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import {
@@ -11,8 +13,6 @@ import {
     View,
 } from 'react-native';
 
-import ContributionGraph from '../../components/ContributionGraph';
-
 import {
     Habit,
     deleteHabit,
@@ -24,7 +24,7 @@ import {
 export default function HabitDetailsScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-
+  const [calendarMode, setCalendarMode] = useState<'monthly' | 'annual'>('monthly');
   const [editing, setEditing] = useState(false);
   const [editedName, setEditedName] = useState('');
   const [processing, setProcessing] = useState(false);
@@ -236,10 +236,60 @@ export default function HabitDetailsScreen() {
               </Text>
             </View>
 
-            <ContributionGraph
-              completedDays={habit.completedDays}
-              onToggleDay={handleToggleDay}
-            />
+            
+            <View style={styles.calendarSection}>
+              <Text style={styles.calendarTitle}>
+                Calendário de atividades
+              </Text>
+
+              <View style={styles.calendarSwitcher}>
+                <TouchableOpacity
+                  style={[
+                    styles.switchButton,
+                    calendarMode === 'monthly' && styles.switchButtonActive,
+                  ]}
+                  onPress={() => setCalendarMode('monthly')}
+                >
+                  <Text
+                    style={[
+                      styles.switchText,
+                      calendarMode === 'monthly' && styles.switchTextActive,
+                    ]}
+                  >
+                    Mensal
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.switchButton,
+                    calendarMode === 'annual' && styles.switchButtonActive,
+                  ]}
+                  onPress={() => setCalendarMode('annual')}
+                >
+                  <Text
+                    style={[
+                      styles.switchText,
+                      calendarMode === 'annual' && styles.switchTextActive,
+                    ]}
+                  >
+                    Anual
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {calendarMode === 'monthly' ? (
+                <MonthlyCalendar
+                  completedDays={habit.completedDays}
+                  onToggleDay={handleToggleDay}
+                />
+              ) : (
+                <ContributionGraph
+                  completedDays={habit.completedDays}
+                  onToggleDay={handleToggleDay}
+                />
+              )}
+            </View>
 
             {saving && (
               <Text style={styles.savingText}>
@@ -409,4 +459,47 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontWeight: '600',
     },
+    
+    calendarSection: {
+      marginTop: 12,
+    },
+
+    calendarTitle: {
+      color: '#f0f6fc',
+      fontSize: 18,
+      fontWeight: '600',
+      marginBottom: 16,
+    },
+
+    calendarSwitcher: {
+      flexDirection: 'row',
+      backgroundColor: '#161b22',
+      borderWidth: 1,
+      borderColor: '#30363d',
+      borderRadius: 10,
+      padding: 4,
+      marginBottom: 20,
+    },
+
+    switchButton: {
+      flex: 1,
+      paddingVertical: 12,
+      alignItems: 'center',
+      borderRadius: 7,
+    },
+
+    switchButtonActive: {
+      backgroundColor: '#238636',
+    },
+
+    switchText: {
+      color: '#8b949e',
+      fontSize: 14,
+      fontWeight: '600',
+    },
+
+    switchTextActive: {
+      color: '#ffffff',
+    },
+
 });
