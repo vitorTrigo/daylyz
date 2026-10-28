@@ -1,7 +1,7 @@
 import ContributionGraph from '../../components/ContributionGraph';
 import MonthlyCalendar from '../../components/MonthlyCalendar';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
@@ -21,16 +21,44 @@ import {
     updateHabitName,
 } from '../../storage/habits';
 
+import {
+  CalendarMode,
+  getCalendarMode,
+  saveCalendarMode,
+} from '../../storage/preferences';
+
 export default function HabitDetailsScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const [calendarMode, setCalendarMode] = useState<'monthly' | 'annual'>('monthly');
+  const [calendarMode, setCalendarMode] = useState<CalendarMode>('monthly');
   const [editing, setEditing] = useState(false);
   const [editedName, setEditedName] = useState('');
   const [processing, setProcessing] = useState(false);
   const [habit, setHabit] = useState<Habit | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadPreference() {
+      try {
+        const savedMode = await getCalendarMode();
+
+        if (active) {
+          setCalendarMode(savedMode);
+        }
+      } catch {
+        console.log('Não foi possível carregar a preferência.');
+      }
+    }
+
+    loadPreference();
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -55,6 +83,19 @@ export default function HabitDetailsScreen() {
       }
 
       loadHabit();
+
+      async function changeCalendarMode(mode: CalendarMode) {
+        setCalendarMode(mode);
+
+        try {
+          await saveCalendarMode(mode);
+        } catch {
+          Alert.alert(
+            'Erro',
+            'Não foi possível salvar a preferência do calendário.'
+          );
+        }
+      }
 
       return () => {
         active = false;
@@ -145,6 +186,19 @@ export default function HabitDetailsScreen() {
         },
         ]
     );
+    }
+
+    async function changeCalendarMode(mode: CalendarMode) {
+      setCalendarMode(mode);
+
+      try {
+        await saveCalendarMode(mode);
+      } catch {
+        Alert.alert(
+          'Erro',
+          'Não foi possível salvar a preferência do calendário.'
+        );
+      }
     }
 
   return (
@@ -248,7 +302,7 @@ export default function HabitDetailsScreen() {
                     styles.switchButton,
                     calendarMode === 'monthly' && styles.switchButtonActive,
                   ]}
-                  onPress={() => setCalendarMode('monthly')}
+                  onPress={() => changeCalendarMode('monthly')}
                 >
                   <Text
                     style={[
@@ -265,7 +319,7 @@ export default function HabitDetailsScreen() {
                     styles.switchButton,
                     calendarMode === 'annual' && styles.switchButtonActive,
                   ]}
-                  onPress={() => setCalendarMode('annual')}
+                  onPress={() => changeCalendarMode('annual')}
                 >
                   <Text
                     style={[
