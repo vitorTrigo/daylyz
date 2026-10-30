@@ -1,17 +1,30 @@
+import { useState } from 'react';
 import {
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
 } from 'react-native';
 
-type Props = {
+type ContributionGraphProps = {
   completedDays: string[];
   onToggleDay: (date: string) => void;
 };
 
-function formatDate(date: Date) {
+const WEEK_DAYS = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
+
+const MONTH_NAMES = [
+  'Jan', 'Fev', 'Mar', 'Abr',
+  'Mai', 'Jun', 'Jul', 'Ago',
+  'Set', 'Out', 'Nov', 'Dez',
+];
+
+type CalendarDay = {
+  date: string;
+  month: number;
+};
+
+function formatDate(date: Date): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
@@ -22,82 +35,157 @@ function formatDate(date: Date) {
 export default function ContributionGraph({
   completedDays,
   onToggleDay,
-}: Props) {
-  const now = new Date();
-  const year = now.getFullYear();
-  const today = formatDate(now);
+}: ContributionGraphProps) {
+  const today = new Date();
 
-  const firstDay = new Date(year, 0, 1);
-  const lastDay = new Date(year, 11, 31);
+  const [selectedYear] = useState(today.getFullYear());
 
-  const totalDays =
-    Math.round(
-      (Date.UTC(year + 1, 0, 1) -
-        Date.UTC(year, 0, 1)) /
-        86400000
-    );
+  const firstDay = new Date(selectedYear, 0, 1);
+  const lastDay = new Date(selectedYear, 11, 31);
 
-  const offset = firstDay.getDay();
-
-  const days = [
-    ...Array.from({ length: offset }, () => null),
-    ...Array.from({ length: totalDays }, (_, index) =>
-      formatDate(new Date(year, 0, index + 1))
-    ),
-  ];
-
-  const weeks = Array.from(
-    { length: Math.ceil(days.length / 7) },
-    (_, index) => days.slice(index * 7, index * 7 + 7)
+  // Começa no domingo anterior ao primeiro dia do ano.
+  const calendarStart = new Date(firstDay);
+  calendarStart.setDate(
+    calendarStart.getDate() - calendarStart.getDay()
   );
+
+  // Termina no sábado seguinte ao último dia do ano.
+  const calendarEnd = new Date(lastDay);
+  calendarEnd.setDate(
+    calendarEnd.getDate() + (6 - calendarEnd.getDay())
+  );
+
+  const totalDays = Math.round(
+    (Date.UTC(
+      calendarEnd.getFullYear(),
+      calendarEnd.getMonth(),
+      calendarEnd.getDate()
+    ) -
+      Date.UTC(
+        calendarStart.getFullYear(),
+        calendarStart.getMonth(),
+        calendarStart.getDate()
+      )) /
+      86400000
+  ) + 1;
+
+  const days: (CalendarDay | null)[] = Array.from(
+    { length: totalDays },
+    (_, index) => {
+      const date = new Date(calendarStart);
+      date.setDate(calendarStart.getDate() + index);
+
+      // Dias de outros anos aparecem como espaços vazios.
+      if (date.getFullYear() !== selectedYear) {
+        return null;
+      }
+
+      const currentDay = new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        today.getDate()
+      );
+
+      if (date.getTime() > currentDay.getTime()) {
+        return null;
+      }
+
+      return {
+        date: formatDate(date),
+        month: date.getMonth(),
+      };
+    }
+  );
+
+  // Divide os dias em semanas de sete posições.
+  const weeks: (CalendarDay | null)[][] = [];
+
+  for (let index = 0; index < days.length; index += 7) {
+    weeks.push(days.slice(index, index + 7));
+  }
+
+  // Coloca as semanas mais recentes primeiro.
+  // Remove semanas sem nenhum dia válido.
+  const visibleWeeks = weeks
+    .filter((week) => week.some((day) => day !== null))
+    .reverse();
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Atividades em {year}</Text>
+      <Text style={styles.title}>
+        Contribuições de {selectedYear}
+      </Text>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-        <View style={styles.graph}>
-          {weeks.map((week, weekIndex) => (
-            <View key={weekIndex} style={styles.column}>
+      <View style={styles.calendar}>
+        <View style={styles.weekHeader}>
+          <View style={styles.monthLabelSpace} />
+
+          {WEEK_DAYS.map((day, index) => (
+            <View key={index} style={styles.dayCell}>
+              <Text style={styles.weekDayText}>{day}</Text>
+            </View>
+          ))}
+        </View>
+
+        {visibleWeeks.map((week, weekIndex) => {
+          // Identifica se um mês começa nesta semana.
+          const currentMonth = week.find((day) => day !== null)?.month;
+
+          const previousWeek = visibleWeeks[weekIndex - 1];
+
+          const previousMonth = previousWeek?.find(
+            (day) => day !== null
+          )?.month;
+
+          const monthLabel =
+            currentMonth !== undefined &&
+            currentMonth !== previousMonth
+              ? MONTH_NAMES[currentMonth]
+              : '';
+
+          return (
+            <View key={weekIndex} style={styles.weekRow}>
+              <View style={styles.monthLabelSpace}>
+                <Text style={styles.monthText}>
+                  {monthLabel}
+                </Text>
+              </View>
+
               {week.map((day, dayIndex) => {
                 if (!day) {
                   return (
                     <View
                       key={`empty-${dayIndex}`}
-                      style={styles.emptySquare}
+                      style={styles.dayCell}
                     />
                   );
                 }
 
-                const completed = completedDays.includes(day);
-                const future = day > today;
+                const isCompleted =
+                  completedDays.includes(day.date);
 
                 return (
-                  <TouchableOpacity
-                    key={day}
-                    disabled={future}
-                    onPress={() => onToggleDay(day)}
-                    style={[
-                      styles.square,
-                      completed && styles.completed,
-                      future && styles.future,
-                    ]}
-                    accessibilityLabel={`${day}: ${
-                      completed ? 'concluído' : 'não concluído'
-                    }`}
-                  />
+                  <View
+                    key={day.date}
+                    style={styles.dayCell}
+                  >
+                    <TouchableOpacity
+                      style={[
+                        styles.daySquare,
+                        isCompleted && styles.completedSquare,
+                      ]}
+                      onPress={() => onToggleDay(day.date)}
+                      activeOpacity={0.7}
+                      accessibilityLabel={`${day.date}, ${
+                        isCompleted ? 'concluído' : 'não concluído'
+                      }`}
+                    />
+                  </View>
                 );
               })}
             </View>
-          ))}
-        </View>
-      </ScrollView>
-
-      <View style={styles.legend}>
-        <Text style={styles.legendText}>Não registrado</Text>
-        <View style={styles.square} />
-        <View style={[styles.square, styles.completed]} />
-        <Text style={styles.legendText}>Concluído</Text>
+          );
+        })}
       </View>
     </View>
   );
@@ -106,54 +194,72 @@ export default function ContributionGraph({
 const styles = StyleSheet.create({
   container: {
     backgroundColor: '#161b22',
-    borderRadius: 14,
-    padding: 18,
     borderWidth: 1,
     borderColor: '#30363d',
+    borderRadius: 14,
+    padding: 12,
+    marginTop: 12,
   },
+
   title: {
     color: '#f0f6fc',
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: '600',
     marginBottom: 20,
   },
-  graph: {
-    flexDirection: 'row',
-    gap: 4,
+
+  calendar: {
+    width: '100%',
   },
-  column: {
-    flexDirection: 'column',
-    gap: 4,
-  },
-  square: {
-    width: 13,
-    height: 13,
-    backgroundColor: '#21262d',
-    borderRadius: 3,
-  },
-  emptySquare: {
-    width: 13,
-    height: 13,
-  },
-  completed: {
-    backgroundColor: '#3fb950',
-  },
-  future: {
-    opacity: 0.3,
-  },
-  legend: {
+
+  weekHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: 8,
-    marginTop: 20,
+    marginBottom: 8,
   },
-  legendText: {
+
+  weekRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+
+  monthLabelSpace: {
+    width: 36,
+    justifyContent: 'center',
+  },
+
+  monthText: {
     color: '#8b949e',
     fontSize: 11,
+    fontWeight: '600',
+  },
+
+  dayCell: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  weekDayText: {
+    color: '#8b949e',
+    fontSize: 11,
+    textAlign: 'center',
+  },
+
+  daySquare: {
+    width: '90%',
+    maxWidth: 35,
+    aspectRatio: 1,
+    borderRadius: 4,
+    backgroundColor: '#21262d',
+  },
+
+  completedSquare: {
+    backgroundColor: '#3fb950',
+  },
+
+  futureSquare: {
+    opacity: 0.3,
   },
 });
-
-
-
-

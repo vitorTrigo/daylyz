@@ -45,8 +45,16 @@ export default function MonthlyCalendar({
   const [selectedYear] = useState(today.getFullYear());
 
   const months = Array.from(
-    { length: 12 },
-    (_, index) => 11 - index
+    {
+      length:
+        selectedYear === today.getFullYear()
+          ? today.getMonth() + 1
+          : 12,
+    },
+    (_, index) =>
+      (selectedYear === today.getFullYear()
+        ? today.getMonth()
+        : 11) - index
   );
 
   return (
@@ -138,16 +146,23 @@ export default function MonthlyCalendar({
                     today.getDate()
                   ).getTime();
 
+                  if (isFuture) {
+                    return (
+                      <View
+                        key={dateKey}
+                        style={styles.dayCell}
+                      />
+                    );
+                  }
+
                 return (
                   <View key={dateKey} style={styles.dayCell}>
                     <TouchableOpacity
                       style={[
                         styles.dayButton,
                         isCompleted && styles.completedDay,
-                        isFuture && styles.futureDay,
                       ]}
                       onPress={() => onToggleDay(dateKey)}
-                      disabled={isFuture}
                       activeOpacity={0.7}
                     >
                       <Text
