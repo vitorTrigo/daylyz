@@ -286,7 +286,7 @@ export default function HabitDetailsScreen() {
                 {habit.completedDays.length}
               </Text>
               <Text style={styles.statsLabel}>
-                dias concluídos
+                Dias concluídos
               </Text>
             </View>
 
@@ -350,10 +350,6 @@ export default function HabitDetailsScreen() {
                 Salvando registro...
               </Text>
             )}
-
-            <Text style={styles.footer}>
-              Cada dia é uma nova oportunidade de evoluir.
-            </Text>
           </>
         )}
       </ScrollView>

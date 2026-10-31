@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import {
   View,
@@ -13,27 +12,23 @@ type MonthlyCalendarProps = {
 };
 
 const MONTH_NAMES = [
-  'Janeiro',
-  'Fevereiro',
-  'Março',
-  'Abril',
-  'Maio',
-  'Junho',
-  'Julho',
-  'Agosto',
-  'Setembro',
-  'Outubro',
-  'Novembro',
-  'Dezembro',
+  'Janeiro', 'Fevereiro', 'Março', 'Abril',
+  'Maio', 'Junho', 'Julho', 'Agosto',
+  'Setembro', 'Outubro', 'Novembro', 'Dezembro',
 ];
 
 const WEEK_DAYS = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
 
-function formatDate(year: number, month: number, day: number) {
-  const formattedMonth = String(month + 1).padStart(2, '0');
-  const formattedDay = String(day).padStart(2, '0');
-
-  return `${year}-${formattedMonth}-${formattedDay}`;
+function formatDate(
+  year: number,
+  month: number,
+  day: number
+): string {
+  return [
+    year,
+    String(month + 1).padStart(2, '0'),
+    String(day).padStart(2, '0'),
+  ].join('-');
 }
 
 export default function MonthlyCalendar({
@@ -42,175 +37,210 @@ export default function MonthlyCalendar({
 }: MonthlyCalendarProps) {
   const today = new Date();
 
-  const [selectedYear] = useState(today.getFullYear());
-
-  const months = Array.from(
-    {
-      length:
-        selectedYear === today.getFullYear()
-          ? today.getMonth() + 1
-          : 12,
-    },
-    (_, index) =>
-      (selectedYear === today.getFullYear()
-        ? today.getMonth()
-        : 11) - index
+  const [selectedMonth, setSelectedMonth] = useState(
+    () => new Date(today.getFullYear(), today.getMonth(), 1)
   );
 
+  const year = selectedMonth.getFullYear();
+  const month = selectedMonth.getMonth();
+
+  const firstWeekDay = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+  const currentDay = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate()
+  );
+
+  const isCurrentMonth =
+    year === today.getFullYear() &&
+    month === today.getMonth();
+
+  const daysElapsed = isCurrentMonth
+    ? today.getDate()
+    : daysInMonth;
+
+  const monthKey = `${year}-${String(month + 1).padStart(2, '0')}-`;
+
+  const completedInMonth = completedDays.filter(
+    (date) => date.startsWith(monthKey)
+  ).length;
+
+  const frequency =
+    daysElapsed > 0
+      ? Math.round((completedInMonth / daysElapsed) * 100)
+      : 0;
+
+  const days = Array.from(
+    { length: Math.ceil((firstWeekDay + daysInMonth) / 7) * 7 },
+    (_, index) => index - firstWeekDay + 1
+  );
+
+  function changeMonth(direction: number) {
+    setSelectedMonth(
+      new Date(year, month + direction, 1)
+    );
+  }
+
   return (
-    <View style={styles.container}>
-      <Text style={styles.yearTitle}>
-        Calendário de {selectedYear}
-      </Text>
+    <View style={styles.wrapper}>
 
-      {months.map((month) => {
-        const firstDay = new Date(
-          selectedYear,
-          month,
-          1
-        ).getDay();
+      {/* CARTÃO DO CALENDÁRIO */}
+      <View style={styles.container}>
 
-        const daysInMonth = new Date(
-          selectedYear,
-          month + 1,
-          0
-        ).getDate();
+        <View style={styles.navigation}>
+          <TouchableOpacity
+            style={styles.arrowButton}
+            onPress={() => changeMonth(-1)}
+            accessibilityLabel="Mês anterior"
+          >
+            <Text style={styles.arrowText}>‹</Text>
+          </TouchableOpacity>
 
-        const days = Array.from(
-          { length: firstDay + daysInMonth },
-          (_, index) => {
-            const day = index - firstDay + 1;
-            return day > 0 ? day : null;
-          }
-        );
+          <Text style={styles.monthTitle}>
+            {MONTH_NAMES[month]} {year}
+          </Text>
 
-        const monthKey = `${selectedYear}-${String(
-          month + 1
-        ).padStart(2, '0')}-`;
+          <TouchableOpacity
+            style={[
+              styles.arrowButton,
+              isCurrentMonth && styles.arrowDisabled,
+            ]}
+            onPress={() => changeMonth(1)}
+            disabled={isCurrentMonth}
+            accessibilityLabel="Próximo mês"
+          >
+            <Text style={styles.arrowText}>›</Text>
+          </TouchableOpacity>
+        </View>
 
-        const completedInMonth = completedDays.filter(
-          (date) => date.startsWith(monthKey)
-        ).length;
-
-        return (
-          <View key={month} style={styles.monthCard}>
-            <View style={styles.monthHeader}>
-              <Text style={styles.monthTitle}>
-                {MONTH_NAMES[month]}
-              </Text>
-
-              <Text style={styles.monthStats}>
-                {completedInMonth} dias
-              </Text>
+        <View style={styles.weekHeader}>
+          {WEEK_DAYS.map((day, index) => (
+            <View key={index} style={styles.dayCell}>
+              <Text style={styles.weekDayText}>{day}</Text>
             </View>
+          ))}
+        </View>
 
-            <View style={styles.weekRow}>
-              {WEEK_DAYS.map((day, index) => (
-                <View key={index} style={styles.dayCell}>
-                  <Text style={styles.weekDayText}>
+        <View style={styles.daysGrid}>
+          {days.map((day, index) => {
+            if (day < 1 || day > daysInMonth) {
+              return (
+                <View
+                  key={`empty-${index}`}
+                  style={styles.dayCell}
+                />
+              );
+            }
+
+            const dateKey = formatDate(year, month, day);
+            const date = new Date(year, month, day);
+
+            if (date.getTime() > currentDay.getTime()) {
+              return (
+                <View
+                  key={dateKey}
+                  style={styles.dayCell}
+                />
+              );
+            }
+
+            const isCompleted = completedDays.includes(dateKey);
+            const isToday = date.getTime() === currentDay.getTime();
+
+            return (
+              <View key={dateKey} style={styles.dayCell}>
+                <TouchableOpacity
+                  style={[
+                    styles.dayButton,
+                    isCompleted && styles.completedDay,
+                    isToday && styles.todayBorder,
+                  ]}
+                  onPress={() => onToggleDay(dateKey)}
+                  activeOpacity={0.7}
+                >
+                  <Text
+                    style={[
+                      styles.dayText,
+                      isCompleted && styles.completedText,
+                    ]}
+                  >
                     {day}
                   </Text>
-                </View>
-              ))}
-            </View>
+                </TouchableOpacity>
+              </View>
+            );
+          })}
+        </View>
+      </View>
 
-            <View style={styles.daysGrid}>
-              {days.map((day, index) => {
-                if (day === null) {
-                  return (
-                    <View
-                      key={`empty-${index}`}
-                      style={styles.dayCell}
-                    />
-                  );
-                }
+      <View style={styles.frequencyCard}>
+        <View style={styles.frequencyHeader}>
+          <Text style={styles.frequencyValue}>
+            {frequency}%
+          </Text>
 
-                const dateKey = formatDate(
-                  selectedYear,
-                  month,
-                  day
-                );
+          <Text style={styles.frequencyDetails}>
+            {completedInMonth} de {daysElapsed} dias
+          </Text>
+        </View>
 
-                const isCompleted =
-                  completedDays.includes(dateKey);
+        <View style={styles.progressBar}>
+          <View
+            style={[
+              styles.progressFill,
+              { width: `${Math.min(frequency, 100)}%` },
+            ]}
+          />
+        </View>
 
-                const isFuture =
-                  new Date(
-                    selectedYear,
-                    month,
-                    day
-                  ).getTime() >
-                  new Date(
-                    today.getFullYear(),
-                    today.getMonth(),
-                    today.getDate()
-                  ).getTime();
-
-                  if (isFuture) {
-                    return (
-                      <View
-                        key={dateKey}
-                        style={styles.dayCell}
-                      />
-                    );
-                  }
-
-                return (
-                  <View key={dateKey} style={styles.dayCell}>
-                    <TouchableOpacity
-                      style={[
-                        styles.dayButton,
-                        isCompleted && styles.completedDay,
-                      ]}
-                      onPress={() => onToggleDay(dateKey)}
-                      activeOpacity={0.7}
-                    >
-                      <Text
-                        style={[
-                          styles.dayText,
-                          isCompleted && styles.completedText,
-                        ]}
-                      >
-                        {day}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                );
-              })}
-            </View>
-          </View>
-        );
-      })}
+        <Text style={styles.frequencyLabel}>
+          Frequência do mês
+        </Text>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  wrapper: {
     marginTop: 12,
-    gap: 16,
+    gap: 14,
   },
 
-  yearTitle: {
-    color: '#f0f6fc',
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 8,
-  },
-
-  monthCard: {
+  container: {
     backgroundColor: '#161b22',
     borderWidth: 1,
     borderColor: '#30363d',
     borderRadius: 14,
-    padding: 14,
+    padding: 16,
   },
 
-  monthHeader: {
+  navigation: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 24,
+  },
+
+  arrowButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 8,
+    backgroundColor: '#21262d',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  arrowDisabled: {
+    opacity: 0.3,
+  },
+
+  arrowText: {
+    color: '#f0f6fc',
+    fontSize: 28,
+    lineHeight: 32,
   },
 
   monthTitle: {
@@ -219,20 +249,15 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  monthStats: {
-    color: '#8b949e',
-    fontSize: 12,
-  },
-
-  weekRow: {
+  weekHeader: {
     flexDirection: 'row',
-    marginBottom: 8,
+    marginBottom: 10,
   },
 
   daysGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    rowGap: 7,
+    rowGap: 8,
   },
 
   dayCell: {
@@ -244,25 +269,26 @@ const styles = StyleSheet.create({
   weekDayText: {
     color: '#8b949e',
     fontSize: 12,
-    textAlign: 'center',
   },
 
   dayButton: {
     width: '88%',
-    aspectRatio: 1,
     maxWidth: 43,
+    aspectRatio: 1,
     borderRadius: 7,
     backgroundColor: '#21262d',
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'transparent',
   },
 
   completedDay: {
     backgroundColor: '#238636',
   },
 
-  futureDay: {
-    opacity: 0.3,
+  todayBorder: {
+    borderColor: '#3fb950',
   },
 
   dayText: {
@@ -274,5 +300,49 @@ const styles = StyleSheet.create({
   completedText: {
     color: '#ffffff',
     fontWeight: 'bold',
+  },
+
+  frequencyCard: {
+    backgroundColor: '#161b22',
+    borderWidth: 1,
+    borderColor: '#30363d',
+    borderRadius: 14,
+    padding: 18,
+  },
+
+  frequencyHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+
+  frequencyLabel: {
+    color: '#8b949e',
+    fontSize: 12,
+  },
+
+  frequencyValue: {
+    color: '#3fb950',
+    fontSize: 30,
+    fontWeight: 'bold',
+  },
+
+  frequencyDetails: {
+    color: '#8b949e',
+    fontSize: 12,
+  },
+
+  progressBar: {
+    height: 5,
+    backgroundColor: '#21262d',
+    borderRadius: 5,
+    overflow: 'hidden',
+  },
+
+  progressFill: {
+    height: '100%',
+    backgroundColor: '#238636',
+    borderRadius: 5,
   },
 });
