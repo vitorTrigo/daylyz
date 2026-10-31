@@ -18,6 +18,34 @@ import {
   getHabits,
 } from '../storage/habits';
 
+
+function getCurrentWeek() {
+  const today = new Date();
+  today.setHours(12, 0, 0, 0);
+
+  const startOfWeek = new Date(today);
+  startOfWeek.setDate(today.getDate() - today.getDay());
+
+  return Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(startOfWeek);
+    date.setDate(startOfWeek.getDate() + index);
+
+    const dateKey = [
+      date.getFullYear(),
+      String(date.getMonth() + 1).padStart(2, '0'),
+      String(date.getDate()).padStart(2, '0'),
+    ].join('-');
+
+    return {
+      dateKey,
+      isToday: date.getTime() === today.getTime(),
+      isFuture: date.getTime() > today.getTime(),
+    };
+  });
+}
+
+const WEEK_DAYS = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
+
 export default function HomeScreen() {
   const router = useRouter();
 
@@ -118,12 +146,8 @@ export default function HomeScreen() {
                   })
                 }
               >
-                <View style={styles.habitHeader}>
+                <View style={styles.habitHeader}> 
                   <View style={styles.habitInfo}>
-                    <Text style={styles.emoji}>
-                      {habit.emoji}
-                    </Text>
-
                     <View style={styles.habitText}>
                       <Text style={styles.habitName}>
                         {habit.name}
@@ -136,30 +160,36 @@ export default function HomeScreen() {
 
                   <Text style={styles.arrow}>›</Text>
                 </View>
-
+                
                 <View style={styles.graph}>
-                  {Array.from({ length: 14 }, (_, index) => {
-                    const date = new Date();
-                    date.setHours(12, 0, 0, 0);
-                    date.setDate(date.getDate() - (13 - index));
-
-                    const dateKey = [
-                      date.getFullYear(),
-                      String(date.getMonth() + 1).padStart(2, '0'),
-                      String(date.getDate()).padStart(2, '0'),
-                    ].join('-');
-
-                    const completed =
-                      habit.completedDays.includes(dateKey);
+                  {getCurrentWeek().map((day, index) => {
+                    const completed = habit.completedDays.includes(
+                      day.dateKey
+                    );
 
                     return (
                       <View
-                        key={dateKey}
-                        style={[
-                          styles.graphSquare,
-                          completed && styles.graphSquareActive,
-                        ]}
-                      />
+                        key={day.dateKey}
+                        style={styles.weekDay}
+                      >
+                        <Text
+                          style={[
+                            styles.weekDayLabel,
+                            day.isToday && styles.weekDayLabelToday,
+                          ]}
+                        >
+                          {WEEK_DAYS[index]}
+                        </Text>
+
+                        <View
+                          style={[
+                            styles.graphSquare,
+                            day.isFuture && styles.graphSquareFuture,
+                            completed && styles.graphSquareActive,
+                            day.isToday && styles.graphSquareToday,
+                          ]}
+                        />
+                      </View>
                     );
                   })}
                 </View>
@@ -285,9 +315,6 @@ const styles = StyleSheet.create({
   habitText: {
     flexShrink: 1,
   },
-  emoji: {
-    fontSize: 27,
-  },
   habitName: {
     color: '#f0f6fc',
     fontSize: 17,
@@ -305,18 +332,43 @@ const styles = StyleSheet.create({
   },
   graph: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginTop: 20,
+    justifyContent: 'space-between',
+    gap: 8,
+    marginTop: 16,
   },
   graphSquare: {
-    width: 15,
-    height: 15,
-    borderRadius: 3,
+    width: '100%',
+    aspectRatio: 1,
+    borderRadius: 5,
     backgroundColor: '#21262d',
+    borderWidth: 1,
+    borderColor: '#30363d',
   },
   graphSquareActive: {
     backgroundColor: '#3fb950',
+    borderColor: '#3fb950',
+  },
+  weekDay: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 8,
+  },
+  weekDayLabel: {
+    color: '#8b949e',
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  weekDayLabelToday: {
+    color: '#3fb950',
+    fontWeight: 'bold',
+  },
+  graphSquareFuture: {
+    backgroundColor: '#161b22',
+    borderColor: '#242a31',
+  },
+  graphSquareToday: {
+    borderWidth: 2,
+    borderColor: '#3fb950',
   },
   addButton: {
     borderWidth: 1,
