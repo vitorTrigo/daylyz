@@ -331,9 +331,17 @@ export default function MonthlyCalendar({
               />
             </View>
 
-            <Text style={styles.frequencyLabel}>
-              Progresso da meta
-            </Text>
+            <View style={styles.goalProgressFooter}>
+              <Text style={styles.frequencyLabel}>
+                Progresso da meta
+              </Text>
+
+              <Text style={styles.frequencyLabel}>
+                {completedInMonth >= monthlyGoal
+                  ? 'Meta atingida!'
+                  : `Faltam ${monthlyGoal - completedInMonth} dias`}
+              </Text>
+            </View>
           </>
         )}
 
@@ -344,7 +352,9 @@ export default function MonthlyCalendar({
           ]}
         >
           <Text style={styles.frequencyLabel}>
-            Frequência do mês
+            {isCurrentMonth
+              ? 'Frequência até hoje'
+              : 'Frequência do mês'}
           </Text>
 
           <Text style={styles.monthlyFrequencyValue}>
@@ -574,11 +584,18 @@ const styles = StyleSheet.create({
     paddingTop: 0,
     borderTopWidth: 0,
   },
-
   monthlyFrequencyValue: {
     color: '#f0f6fc',
     fontSize: 15,
     fontWeight: '600',
   },
-
+  goalProgressLabel: {
+    marginTop: 10,
+  },
+  goalProgressFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 12,
+  },
 });
