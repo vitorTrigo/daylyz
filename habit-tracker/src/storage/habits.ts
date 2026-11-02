@@ -5,6 +5,7 @@ export type Habit = {
   name: string;
   emoji: string;
   completedDays: string[];
+  monthlyGoals?: Record<string, number>;
 };
 
 const STORAGE_KEY = '@dailyz:habits';
@@ -61,6 +62,7 @@ export async function createHabit(name: string): Promise<Habit> {
     name: name.trim(),
     emoji: '🎯',
     completedDays: [],
+    monthlyGoals: {},
   };
 
   await saveHabits([...habits, newHabit]);
@@ -146,5 +148,65 @@ export async function deleteHabit(
   );
 
   await saveHabits(updatedHabits);
+}
+
+export async function updateHabitMonthlyGoal(
+  habitId: string,
+  month: string,
+  goal: number | null
+): Promise<Habit | undefined> {
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
+    throw new Error('Mês inválido.');
+  }
+
+  if (
+    goal !== null &&
+    (!Number.isInteger(goal) || goal < 1 || goal > 31)
+  ) {
+    throw new Error('A meta deve ser entre 1 e 31 dias.');
+  }
+
+  const habits = await getHabits();
+  const habit = habits.find((item) => item.id === habitId);
+
+  if (!habit) return undefined;
+
+  const monthlyGoals = { ...(habit.monthlyGoals ?? {}) };
+
+  if (goal === null) {
+    delete monthlyGoals[month];
+  } else {
+    monthlyGoals[month] = goal;
+  }
+
+  const updatedHabit: Habit = {
+    ...habit,
+    monthlyGoals,
+  };
+
+  await saveHabits(
+    habits.map((item) =>
+      item.id === habitId ? updatedHabit : item
+    )
+  );
+
+  return updatedHabit;
+}
+
+export function getHabitMonthlyGoal(
+  habit: Habit,
+  year: number,
+  month: number
+): number | null {
+  // month utiliza os valores de 0 (janeiro) a 11 (dezembro).
+  const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`;
+
+  const goal = habit.monthlyGoals?.[monthKey];
+
+  if (goal === undefined) return null;
+
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+  return Math.min(goal, daysInMonth);
 }
 

@@ -4,11 +4,19 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
+  TextInput,
+  Alert,
 } from 'react-native';
 
 type MonthlyCalendarProps = {
   completedDays: string[];
   onToggleDay: (date: string) => void;
+  monthlyGoals?: Record<string, number>;
+  onSaveGoal: (
+    month: string,
+    goal: number | null
+  ) => Promise<boolean>;
+  savingGoal?: boolean;
 };
 
 const MONTH_NAMES = [
@@ -34,12 +42,20 @@ function formatDate(
 export default function MonthlyCalendar({
   completedDays,
   onToggleDay,
+  monthlyGoals = {},
+  onSaveGoal,
+  savingGoal = false,
 }: MonthlyCalendarProps) {
   const today = new Date();
 
   const [selectedMonth, setSelectedMonth] = useState(
     () => new Date(today.getFullYear(), today.getMonth(), 1)
   );
+
+  const [editingGoalMonth, setEditingGoalMonth] =
+  useState<string | null>(null);
+
+  const [goalInput, setGoalInput] = useState('');
 
   const year = selectedMonth.getFullYear();
   const month = selectedMonth.getMonth();
@@ -71,6 +87,65 @@ export default function MonthlyCalendar({
     daysElapsed > 0
       ? Math.round((completedInMonth / daysElapsed) * 100)
       : 0;
+
+  const selectedMonthKey =
+    `${year}-${String(month + 1).padStart(2, '0')}`;
+
+  const configuredGoal = monthlyGoals[selectedMonthKey];
+
+  const monthlyGoal =
+    configuredGoal === undefined
+      ? null
+      : Math.min(configuredGoal, daysInMonth);
+
+  const goalProgress =
+    monthlyGoal !== null
+      ? Math.round((completedInMonth / monthlyGoal) * 100)
+      : null;
+
+  const isEditingGoal = editingGoalMonth === selectedMonthKey;
+
+  function startEditingGoal() {
+    setGoalInput(
+      configuredGoal === undefined
+        ? ''
+        : String(configuredGoal)
+    );
+    setEditingGoalMonth(selectedMonthKey);
+  }
+
+  async function handleSaveGoal() {
+    const trimmed = goalInput.trim();
+
+    if (!trimmed) {
+      Alert.alert('Atenção', 'Digite uma meta mensal.');
+      return;
+    }
+
+    const goal = Number(trimmed);
+
+    if (!Number.isInteger(goal) || goal < 1 || goal > 31) {
+      Alert.alert(
+        'Meta inválida',
+        'Digite um número inteiro entre 1 e 31.'
+      );
+      return;
+    }
+
+    const saved = await onSaveGoal(selectedMonthKey, goal);
+
+    if (saved) {
+      setEditingGoalMonth(null);
+    }
+  }
+
+  async function handleRemoveGoal() {
+    const saved = await onSaveGoal(selectedMonthKey, null);
+
+    if (saved) {
+      setEditingGoalMonth(null);
+    }
+  }
 
   const days = Array.from(
     { length: Math.ceil((firstWeekDay + daysInMonth) / 7) * 7 },
@@ -176,28 +251,106 @@ export default function MonthlyCalendar({
       </View>
 
       <View style={styles.frequencyCard}>
-        <View style={styles.frequencyHeader}>
-          <Text style={styles.frequencyValue}>
+        <View style={styles.goalTitleRow}>
+          <Text style={styles.goalTitle}>
+            Meta de {MONTH_NAMES[month].toLowerCase()}
+          </Text>
+
+          {!isEditingGoal && (
+            <TouchableOpacity
+              onPress={startEditingGoal}
+              disabled={savingGoal}
+            >
+              <Text style={styles.goalAction}>
+                {monthlyGoal === null ? '+ Definir meta' : 'Editar meta'}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {isEditingGoal && (
+          <View style={styles.goalEditor}>
+            <TextInput
+              style={styles.goalInput}
+              value={goalInput}
+              onChangeText={setGoalInput}
+              keyboardType="number-pad"
+              placeholder="Ex: 16"
+              placeholderTextColor="#8b949e"
+              maxLength={2}
+            />
+
+            <TouchableOpacity
+              style={styles.goalSaveButton}
+              onPress={handleSaveGoal}
+              disabled={savingGoal}
+            >
+              <Text style={styles.goalSaveText}>
+                {savingGoal ? 'Salvando...' : 'Salvar'}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => setEditingGoalMonth(null)}
+              disabled={savingGoal}
+            >
+              <Text style={styles.goalCancelText}>Cancelar</Text>
+            </TouchableOpacity>
+
+            {monthlyGoal !== null && (
+              <TouchableOpacity
+                onPress={handleRemoveGoal}
+                disabled={savingGoal}
+              >
+                <Text style={styles.goalRemoveText}>
+                  Remover meta
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+
+        {monthlyGoal !== null && goalProgress !== null && (
+          <>
+            <View style={styles.frequencyHeader}>
+              <Text style={styles.frequencyValue}>
+                {goalProgress}%
+              </Text>
+
+              <Text style={styles.frequencyDetails}>
+                {completedInMonth} de {monthlyGoal} dias
+              </Text>
+            </View>
+
+            <View style={styles.progressBar}>
+              <View
+                style={[
+                  styles.progressFill,
+                  { width: `${Math.min(goalProgress, 100)}%` },
+                ]}
+              />
+            </View>
+
+            <Text style={styles.frequencyLabel}>
+              Progresso da meta
+            </Text>
+          </>
+        )}
+
+        <View
+          style={[
+            styles.monthlyFrequencyRow,
+            monthlyGoal === null && styles.monthlyFrequencyStandalone,
+          ]}
+        >
+          <Text style={styles.frequencyLabel}>
+            Frequência do mês
+          </Text>
+
+          <Text style={styles.monthlyFrequencyValue}>
             {frequency}%
           </Text>
-
-          <Text style={styles.frequencyDetails}>
-            {completedInMonth} de {daysElapsed} dias
-          </Text>
         </View>
-
-        <View style={styles.progressBar}>
-          <View
-            style={[
-              styles.progressFill,
-              { width: `${Math.min(frequency, 100)}%` },
-            ]}
-          />
-        </View>
-
-        <Text style={styles.frequencyLabel}>
-          Frequência do mês
-        </Text>
       </View>
     </View>
   );
@@ -345,4 +498,87 @@ const styles = StyleSheet.create({
     backgroundColor: '#238636',
     borderRadius: 5,
   },
+  
+  goalTitleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 18,
+  },
+
+  goalTitle: {
+    color: '#f0f6fc',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+
+  goalAction: {
+    color: '#3fb950',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+
+  goalEditor: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 20,
+  },
+
+  goalInput: {
+    backgroundColor: '#0d1117',
+    borderWidth: 1,
+    borderColor: '#30363d',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: '#f0f6fc',
+    minWidth: 75,
+  },
+
+  goalSaveButton: {
+    backgroundColor: '#238636',
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+
+  goalSaveText: {
+    color: '#ffffff',
+    fontWeight: '600',
+  },
+
+  goalCancelText: {
+    color: '#8b949e',
+    fontSize: 13,
+  },
+
+  goalRemoveText: {
+    color: '#f85149',
+    fontSize: 13,
+  },
+
+  monthlyFrequencyRow: {
+    borderTopWidth: 1,
+    borderTopColor: '#30363d',
+    marginTop: 20,
+    paddingTop: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+
+  monthlyFrequencyStandalone: {
+    marginTop: 0,
+    paddingTop: 0,
+    borderTopWidth: 0,
+  },
+
+  monthlyFrequencyValue: {
+    color: '#f0f6fc',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+
 });

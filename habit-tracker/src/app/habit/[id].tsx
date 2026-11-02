@@ -19,6 +19,7 @@ import {
     getHabitById,
     toggleHabitDay,
     updateHabitName,
+    updateHabitMonthlyGoal,
 } from '../../storage/habits';
 
 import {
@@ -37,6 +38,7 @@ export default function HabitDetailsScreen() {
   const [habit, setHabit] = useState<Habit | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [savingGoal, setSavingGoal] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -201,6 +203,38 @@ export default function HabitDetailsScreen() {
       }
     }
 
+  async function handleSaveMonthlyGoal(
+    month: string,
+    goal: number | null
+  ): Promise<boolean> {
+    if (!id || savingGoal || saving || processing) {
+      return false;
+    }
+
+    setSavingGoal(true);
+
+    try {
+      const updatedHabit = await updateHabitMonthlyGoal(
+        id,
+        month,
+        goal
+      );
+
+      if (!updatedHabit) {
+        Alert.alert('Erro', 'Hábito não encontrado.');
+        return false;
+      }
+
+      setHabit(updatedHabit);
+      return true;
+    } catch {
+      Alert.alert('Erro', 'Não foi possível salvar a meta.');
+      return false;
+    } finally {
+      setSavingGoal(false);
+    }
+  }
+
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
@@ -336,6 +370,9 @@ export default function HabitDetailsScreen() {
                 <MonthlyCalendar
                   completedDays={habit.completedDays}
                   onToggleDay={handleToggleDay}
+                  monthlyGoals={habit.monthlyGoals}
+                  onSaveGoal={handleSaveMonthlyGoal}
+                  savingGoal={savingGoal}
                 />
               ) : (
                 <ContributionGraph
