@@ -8,11 +8,21 @@ import {
   Alert,
 } from 'react-native';
 
+import {
+  getHabitMonthlyGoal,
+  type Habit,
+} from '../storage/habits';
+
 type MonthlyCalendarProps = {
   completedDays: string[];
   onToggleDay: (date: string) => void;
   monthlyGoals?: Record<string, number>;
+  recurringMonthlyGoals?: Habit['recurringMonthlyGoals'];
   onSaveGoal: (
+    month: string,
+    goal: number | null
+  ) => Promise<boolean>;
+  onSaveRecurringGoal: (
     month: string,
     goal: number | null
   ) => Promise<boolean>;
@@ -43,7 +53,9 @@ export default function MonthlyCalendar({
   completedDays,
   onToggleDay,
   monthlyGoals = {},
+  recurringMonthlyGoals = [],
   onSaveGoal,
+  onSaveRecurringGoal,
   savingGoal = false,
 }: MonthlyCalendarProps) {
   const today = new Date();
@@ -56,6 +68,7 @@ export default function MonthlyCalendar({
   useState<string | null>(null);
 
   const [goalInput, setGoalInput] = useState('');
+  const [repeatGoal, setRepeatGoal] = useState(false);
 
   const year = selectedMonth.getFullYear();
   const month = selectedMonth.getMonth();
@@ -93,10 +106,32 @@ export default function MonthlyCalendar({
 
   const configuredGoal = monthlyGoals[selectedMonthKey];
 
-  const monthlyGoal =
-    configuredGoal === undefined
-      ? null
-      : Math.min(configuredGoal, daysInMonth);
+  const monthlyGoal = getHabitMonthlyGoal(
+    {
+      id: '',
+      name: '',
+      emoji: '',
+      completedDays,
+      monthlyGoals,
+      recurringMonthlyGoals,
+    },
+    year,
+    month
+  );
+
+  const activeRecurringRule = [...recurringMonthlyGoals]
+    .filter((rule) => rule.startMonth <= selectedMonthKey)
+    .sort((a, b) =>
+      b.startMonth.localeCompare(a.startMonth)
+    )[0];
+
+  const hasActiveRecurrence =
+    activeRecurringRule !== undefined &&
+    activeRecurringRule.goal !== null;
+
+  const isRecurringGoal =
+    configuredGoal === undefined &&
+    hasActiveRecurrence;
 
   const goalProgress =
     monthlyGoal !== null
@@ -107,10 +142,13 @@ export default function MonthlyCalendar({
 
   function startEditingGoal() {
     setGoalInput(
-      configuredGoal === undefined
-        ? ''
-        : String(configuredGoal)
+      monthlyGoal === null ? '' : String(monthlyGoal)
     );
+
+    // Mostra se existe uma recorrência ativa
+    // para o mês selecionado.
+    setRepeatGoal(hasActiveRecurrence);
+
     setEditingGoalMonth(selectedMonthKey);
   }
 
@@ -132,15 +170,43 @@ export default function MonthlyCalendar({
       return;
     }
 
-    const saved = await onSaveGoal(selectedMonthKey, goal);
+    const saved = repeatGoal
+      ? await onSaveRecurringGoal(selectedMonthKey, goal)
+      : await onSaveGoal(selectedMonthKey, goal);
 
     if (saved) {
       setEditingGoalMonth(null);
     }
   }
 
+  
   async function handleRemoveGoal() {
+    // Remove apenas uma meta individual.
+    if (configuredGoal === undefined) {
+      return;
+    }
+
     const saved = await onSaveGoal(selectedMonthKey, null);
+
+    if (saved) {
+      setEditingGoalMonth(null);
+    }
+  }
+
+  async function handleDisableRecurrence() {
+    // A repetição será interrompida no próximo mês,
+    // preservando a meta do mês atual.
+    const nextMonth = new Date(year, month + 1, 1);
+
+    const nextMonthKey =
+      `${nextMonth.getFullYear()}-${String(
+        nextMonth.getMonth() + 1
+      ).padStart(2, '0')}`;
+
+    const saved = await onSaveRecurringGoal(
+      nextMonthKey,
+      null
+    );
 
     if (saved) {
       setEditingGoalMonth(null);
@@ -268,6 +334,12 @@ export default function MonthlyCalendar({
           )}
         </View>
 
+        {isRecurringGoal && (
+          <Text style={styles.recurringGoalLabel}>
+            ↻ Meta recorrente
+          </Text>
+        )}
+
         {isEditingGoal && (
           <View style={styles.goalEditor}>
             <TextInput
@@ -279,6 +351,29 @@ export default function MonthlyCalendar({
               placeholderTextColor="#8b949e"
               maxLength={2}
             />
+
+            <TouchableOpacity
+              style={styles.repeatOption}
+              onPress={() => setRepeatGoal(!repeatGoal)}
+              disabled={savingGoal}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: repeatGoal }}
+            >
+              <View
+                style={[
+                  styles.repeatCheckbox,
+                  repeatGoal && styles.repeatCheckboxChecked,
+                ]}
+              >
+                {repeatGoal && (
+                  <Text style={styles.repeatCheckmark}>✓</Text>
+                )}
+              </View>
+
+              <Text style={styles.repeatText}>
+                Repetir nos próximos meses
+              </Text>
+            </TouchableOpacity>
 
             <TouchableOpacity
               style={styles.goalSaveButton}
@@ -297,13 +392,24 @@ export default function MonthlyCalendar({
               <Text style={styles.goalCancelText}>Cancelar</Text>
             </TouchableOpacity>
 
-            {monthlyGoal !== null && (
+            {configuredGoal !== undefined && (
               <TouchableOpacity
                 onPress={handleRemoveGoal}
                 disabled={savingGoal}
               >
                 <Text style={styles.goalRemoveText}>
                   Remover meta
+                </Text>
+              </TouchableOpacity>
+            )}
+
+            {hasActiveRecurrence && (
+              <TouchableOpacity
+                onPress={handleDisableRecurrence}
+                disabled={savingGoal}
+              >
+                <Text style={styles.goalRemoveText}>
+                  Desativar repetição
                 </Text>
               </TouchableOpacity>
             )}
@@ -597,5 +703,42 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginTop: 12,
+  },
+  repeatOption: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+
+  repeatCheckbox: {
+    width: 20,
+    height: 20,
+    borderWidth: 1,
+    borderColor: '#8b949e',
+    borderRadius: 5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  repeatCheckboxChecked: {
+    backgroundColor: '#238636',
+    borderColor: '#3fb950',
+  },
+
+  repeatCheckmark: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: 'bold',
+  },
+
+  repeatText: {
+    color: '#f0f6fc',
+    fontSize: 13,
+  },
+    recurringGoalLabel: {
+    color: '#3fb950',
+    fontSize: 12,
+    marginBottom: 14,
   },
 });

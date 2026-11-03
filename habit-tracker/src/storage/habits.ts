@@ -1,11 +1,17 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+export type RecurringMonthlyGoal = {
+  startMonth: string;
+  goal: number | null;
+};
+
 export type Habit = {
   id: string;
   name: string;
   emoji: string;
   completedDays: string[];
   monthlyGoals?: Record<string, number>;
+  recurringMonthlyGoals?: RecurringMonthlyGoal[];
 };
 
 const STORAGE_KEY = '@dailyz:habits';
@@ -63,6 +69,7 @@ export async function createHabit(name: string): Promise<Habit> {
     emoji: '🎯',
     completedDays: [],
     monthlyGoals: {},
+    recurringMonthlyGoals: [],
   };
 
   await saveHabits([...habits, newHabit]);
@@ -198,15 +205,117 @@ export function getHabitMonthlyGoal(
   year: number,
   month: number
 ): number | null {
-  // month utiliza os valores de 0 (janeiro) a 11 (dezembro).
-  const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`;
+  const monthKey =
+    `${year}-${String(month + 1).padStart(2, '0')}`;
 
-  const goal = habit.monthlyGoals?.[monthKey];
+  const daysInMonth =
+    new Date(year, month + 1, 0).getDate();
 
-  if (goal === undefined) return null;
+  // Metas individuais têm prioridade.
+  const individualGoal = habit.monthlyGoals?.[monthKey];
 
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  if (individualGoal !== undefined) {
+    return Math.min(individualGoal, daysInMonth);
+  }
 
-  return Math.min(goal, daysInMonth);
+  // Procura a regra recorrente mais recente
+  // que já estava ativa no mês consultado.
+  const applicableRules = (
+    habit.recurringMonthlyGoals ?? []
+  )
+    .filter((rule) => rule.startMonth <= monthKey)
+    .sort((a, b) =>
+      b.startMonth.localeCompare(a.startMonth)
+    );
+
+  const recurringGoal = applicableRules[0]?.goal;
+
+  if (recurringGoal === undefined || recurringGoal === null) {
+    return null;
+  }
+
+  return Math.min(recurringGoal, daysInMonth);
 }
 
+export async function updateRecurringMonthlyGoal(
+  habitId: string,
+  startMonth: string,
+  goal: number | null
+): Promise<Habit | undefined> {
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(startMonth)) {
+    throw new Error('Mês inválido.');
+  }
+
+  if (
+    goal !== null &&
+    (!Number.isInteger(goal) || goal < 1 || goal > 31)
+  ) {
+    throw new Error('A meta deve ser entre 1 e 31 dias.');
+  }
+
+  const habits = await getHabits();
+  const habit = habits.find((item) => item.id === habitId);
+
+  if (!habit) return undefined;
+  
+  const previousRules = habit.recurringMonthlyGoals ?? [];
+
+  // Remove regras duplicadas do mesmo mês e
+  // interrupções posteriores à nova recorrência.
+  const rules = previousRules.filter((rule) => {
+    if (rule.startMonth === startMonth) {
+      return false;
+    }
+
+    if (
+      goal !== null &&
+      rule.startMonth > startMonth &&
+      rule.goal === null
+    ) {
+      return false;
+    }
+
+    return true;
+  });
+
+  // Adiciona a nova regra uma única vez.
+  rules.push({ startMonth, goal });
+
+  // Organiza as regras cronologicamente.
+  rules.sort((a, b) =>
+    a.startMonth.localeCompare(b.startMonth)
+  );
+
+  console.log(
+    'Regras depois da atualização:',
+    JSON.stringify(rules)
+  );
+
+  rules.push({ startMonth, goal });
+
+  rules.sort((a, b) =>
+    a.startMonth.localeCompare(b.startMonth)
+  );
+
+  const monthlyGoals = { ...(habit.monthlyGoals ?? {}) };
+
+  // Ao ativar a recorrência, a meta do mês inicial
+  // passa a ser controlada pela regra recorrente.
+  if (goal !== null) {
+    delete monthlyGoals[startMonth];
+  }
+
+  const updatedHabit: Habit = {
+    ...habit,
+    monthlyGoals,
+    recurringMonthlyGoals: rules,
+  };
+
+  await saveHabits(
+    habits.map((item) =>
+      item.id === habitId ? updatedHabit : item
+    )
+  );
+
+  return updatedHabit;
+}

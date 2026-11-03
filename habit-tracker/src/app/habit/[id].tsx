@@ -20,6 +20,7 @@ import {
     toggleHabitDay,
     updateHabitName,
     updateHabitMonthlyGoal,
+    updateRecurringMonthlyGoal,
 } from '../../storage/habits';
 
 import {
@@ -235,6 +236,48 @@ export default function HabitDetailsScreen() {
     }
   }
 
+    async function handleSaveRecurringGoal(
+      month: string,
+      goal: number | null
+    ): Promise<boolean> {
+      if (!id || savingGoal || saving || processing) {
+        return false;
+      }
+
+      setSavingGoal(true);
+
+      try {
+        const updatedHabit = await updateRecurringMonthlyGoal(
+          id,
+          month,
+          goal
+        );
+
+        console.log('Mês configurado:', month);
+        console.log('Meta configurada:', goal);
+        console.log(
+          'Regras recorrentes salvas:',
+          JSON.stringify(updatedHabit?.recurringMonthlyGoals)
+        );
+
+        if (!updatedHabit) {
+          Alert.alert('Erro', 'Hábito não encontrado.');
+          return false;
+        }
+
+        setHabit(updatedHabit);
+        return true;
+      } catch {
+        Alert.alert(
+          'Erro',
+          'Não foi possível salvar a meta recorrente.'
+        );
+        return false;
+      } finally {
+        setSavingGoal(false);
+      }
+    }
+
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
@@ -371,7 +414,9 @@ export default function HabitDetailsScreen() {
                   completedDays={habit.completedDays}
                   onToggleDay={handleToggleDay}
                   monthlyGoals={habit.monthlyGoals}
+                  recurringMonthlyGoals={habit.recurringMonthlyGoals}
                   onSaveGoal={handleSaveMonthlyGoal}
+                  onSaveRecurringGoal={handleSaveRecurringGoal}
                   savingGoal={savingGoal}
                 />
               ) : (
