@@ -21,6 +21,8 @@ import {
     updateHabitName,
     updateHabitMonthlyGoal,
     updateRecurringMonthlyGoal,
+    getHabitMonthlyGoal,
+    updateHabitDefaultMonthlyGoal,
 } from '../../storage/habits';
 
 import {
@@ -40,6 +42,8 @@ export default function HabitDetailsScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savingGoal, setSavingGoal] = useState(false);
+  const [editingDefaultGoal, setEditingDefaultGoal] = useState(false);
+  const [defaultGoalInput, setDefaultGoalInput] = useState('');
 
   useEffect(() => {
     let active = true;
@@ -278,6 +282,65 @@ export default function HabitDetailsScreen() {
       }
     }
 
+    function getCurrentDefaultGoal(): number | null {
+      if (!habit) return null;
+
+      const today = new Date();
+
+      // Não considera metas exclusivas de um mês.
+      return getHabitMonthlyGoal(
+        {
+          ...habit,
+          monthlyGoals: {},
+        },
+        today.getFullYear(),
+        today.getMonth()
+      );
+    }
+
+    function startEditingDefaultGoal() {
+      const currentGoal = getCurrentDefaultGoal();
+
+      setDefaultGoalInput(
+        currentGoal === null ? '' : String(currentGoal)
+      );
+
+      setEditingDefaultGoal(true);
+    }
+
+    async function handleSaveDefaultGoal(goal: number | null) {
+      if (!id || savingGoal || saving || processing) return;
+
+      if (
+        goal !== null &&
+        (!Number.isInteger(goal) || goal < 1 || goal > 31)
+      ) {
+        Alert.alert('Atenção', 'Digite uma meta entre 1 e 31 dias.');
+        return;
+      }
+
+      setSavingGoal(true);
+
+      try {
+        const updatedHabit = await updateHabitDefaultMonthlyGoal(
+          id,
+          goal
+        );
+
+        if (!updatedHabit) {
+          Alert.alert('Erro', 'Hábito não encontrado.');
+          return;
+        }
+
+        setHabit(updatedHabit);
+        setEditingDefaultGoal(false);
+      } catch {
+        Alert.alert('Erro', 'Não foi possível salvar a meta padrão.');
+      } finally {
+        setSavingGoal(false);
+      }
+    }
+
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
@@ -367,6 +430,90 @@ export default function HabitDetailsScreen() {
               </Text>
             </View>
 
+            <View style={styles.defaultGoalCard}>
+              <Text style={styles.defaultGoalTitle}>
+                Meta mensal padrão
+              </Text>
+
+              <Text style={styles.defaultGoalDescription}>
+                Aplicada automaticamente aos meses sem uma meta exclusiva.
+              </Text>
+
+              {editingDefaultGoal ? (
+                <>
+                  <TextInput
+                    style={styles.editInput}
+                    value={defaultGoalInput}
+                    onChangeText={setDefaultGoalInput}
+                    keyboardType="number-pad"
+                    placeholder="Ex.: 20"
+                    placeholderTextColor="#8b949e"
+                    maxLength={2}
+                  />
+
+                  <View style={styles.editActions}>
+                    <TouchableOpacity
+                      style={styles.cancelEditButton}
+                      onPress={() => setEditingDefaultGoal(false)}
+                      disabled={savingGoal}
+                    >
+                      <Text style={styles.cancelEditText}>
+                        Cancelar
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.confirmEditButton}
+                      onPress={() => {
+                        const value = defaultGoalInput.trim();
+
+                        if (!/^\d+$/.test(value)) {
+                          Alert.alert('Atenção', 'Digite uma meta válida.');
+                          return;
+                        }
+
+                        handleSaveDefaultGoal(Number(value));
+                      }}
+                      disabled={savingGoal}
+                    >
+                      <Text style={styles.confirmEditText}>
+                        {savingGoal ? 'Salvando...' : 'Salvar'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {getCurrentDefaultGoal() !== null && (
+                    <TouchableOpacity
+                      style={styles.removeDefaultGoalButton}
+                      onPress={() => handleSaveDefaultGoal(null)}
+                      disabled={savingGoal}
+                    >
+                      <Text style={styles.removeDefaultGoalText}>
+                        Remover meta padrão
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </>
+              ) : (
+                <View style={styles.defaultGoalRow}>
+                  <Text style={styles.defaultGoalValue}>
+                    {getCurrentDefaultGoal() === null
+                      ? 'Não definida'
+                      : `${getCurrentDefaultGoal()} dias/mês`}
+                  </Text>
+
+                  <TouchableOpacity
+                    style={styles.editButton}
+                    onPress={startEditingDefaultGoal}
+                    disabled={savingGoal}
+                  >
+                    <Text style={styles.editButtonText}>
+                      Configurar
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
             
             <View style={styles.calendarSection}>
               <Text style={styles.calendarTitle}>
@@ -416,7 +563,6 @@ export default function HabitDetailsScreen() {
                   monthlyGoals={habit.monthlyGoals}
                   recurringMonthlyGoals={habit.recurringMonthlyGoals}
                   onSaveGoal={handleSaveMonthlyGoal}
-                  onSaveRecurringGoal={handleSaveRecurringGoal}
                   savingGoal={savingGoal}
                 />
               ) : (
@@ -514,48 +660,48 @@ const styles = StyleSheet.create({
     gap: 8,
   },
 
-    editButton: {
+  editButton: {
     backgroundColor: '#21262d',
     borderRadius: 8,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    },
+  },
 
-    editButtonText: {
+  editButtonText: {
     color: '#f0f6fc',
     fontSize: 13,
     fontWeight: '600',
-    },
+  },
 
-    deleteButton: {
+  deleteButton: {
     backgroundColor: '#3a2025',
     borderRadius: 8,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    },
+  },
 
-    deleteButtonText: {
+  deleteButtonText: {
     color: '#f85149',
     fontSize: 13,
     fontWeight: '600',
-    },
+  },
 
-    editContainer: {
+  editContainer: {
     backgroundColor: '#161b22',
     borderWidth: 1,
     borderColor: '#30363d',
     borderRadius: 14,
     padding: 18,
     marginBottom: 24,
-    },
+  },
 
-    editLabel: {
+  editLabel: {
     color: '#f0f6fc',
     fontSize: 14,
     marginBottom: 10,
-    },
+  },
 
-    editInput: {
+  editInput: {
     backgroundColor: '#0d1117',
     borderWidth: 1,
     borderColor: '#30363d',
@@ -563,75 +709,123 @@ const styles = StyleSheet.create({
     padding: 12,
     color: '#f0f6fc',
     fontSize: 15,
-    },
+  },
 
-    editActions: {
+  editActions: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
     gap: 12,
     marginTop: 16,
-    },
+  },
 
-    cancelEditButton: {
+  cancelEditButton: {
     padding: 12,
-    },
+  },
 
-    cancelEditText: {
+  cancelEditText: {
     color: '#8b949e',
-    },
+  },
 
-    confirmEditButton: {
+  confirmEditButton: {
     backgroundColor: '#238636',
     borderRadius: 8,
     paddingHorizontal: 18,
     paddingVertical: 12,
-    },
+  },
 
-    confirmEditText: {
+  confirmEditText: {
     color: '#ffffff',
     fontWeight: '600',
-    },
+  },
     
-    calendarSection: {
-      marginTop: 12,
-    },
+  calendarSection: {
+    marginTop: 12,
+  },
 
-    calendarTitle: {
-      color: '#f0f6fc',
-      fontSize: 18,
-      fontWeight: '600',
-      marginBottom: 16,
-    },
+  calendarTitle: {
+    color: '#f0f6fc',
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 16,
+  },
 
-    calendarSwitcher: {
-      flexDirection: 'row',
-      backgroundColor: '#161b22',
-      borderWidth: 1,
-      borderColor: '#30363d',
-      borderRadius: 10,
-      padding: 4,
-      marginBottom: 20,
-    },
+  calendarSwitcher: {
+    flexDirection: 'row',
+    backgroundColor: '#161b22',
+    borderWidth: 1,
+    borderColor: '#30363d',
+    borderRadius: 10,
+    padding: 4,
+    marginBottom: 20,
+  },
 
-    switchButton: {
-      flex: 1,
-      paddingVertical: 12,
-      alignItems: 'center',
-      borderRadius: 7,
-    },
+  switchButton: {
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: 'center',
+    borderRadius: 7,
+  },
 
-    switchButtonActive: {
-      backgroundColor: '#238636',
-    },
+  switchButtonActive: {
+    backgroundColor: '#238636',
+  },
 
-    switchText: {
-      color: '#8b949e',
-      fontSize: 14,
-      fontWeight: '600',
-    },
+  switchText: {
+    color: '#8b949e',
+    fontSize: 14,
+    fontWeight: '600',
+  },
 
-    switchTextActive: {
-      color: '#ffffff',
-    },
+  switchTextActive: {
+    color: '#ffffff',
+  },
 
+  defaultGoalCard: {
+    backgroundColor: '#161b22',
+    borderWidth: 1,
+    borderColor: '#30363d',
+    borderRadius: 14,
+    padding: 20,
+    marginBottom: 20,
+  },
+
+  defaultGoalTitle: {
+    color: '#f0f6fc',
+    fontSize: 17,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+
+  defaultGoalDescription: {
+    color: '#8b949e',
+    fontSize: 13,
+    lineHeight: 19,
+    marginBottom: 16,
+  },
+
+  defaultGoalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
+  },
+
+  defaultGoalValue: {
+    color: '#3fb950',
+    fontSize: 19,
+    fontWeight: 'bold',
+    flexShrink: 1,
+  },
+
+  removeDefaultGoalButton: {
+    paddingVertical: 12,
+    marginTop: 10,
+    alignItems: 'center',
+  },
+
+  removeDefaultGoalText: {
+    color: '#f85149',
+    fontSize: 13,
+    fontWeight: '600',
+  },
 });

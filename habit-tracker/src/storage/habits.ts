@@ -257,40 +257,11 @@ export async function updateRecurringMonthlyGoal(
   const habit = habits.find((item) => item.id === habitId);
 
   if (!habit) return undefined;
-  
-  const previousRules = habit.recurringMonthlyGoals ?? [];
 
-  // Remove regras duplicadas do mesmo mês e
-  // interrupções posteriores à nova recorrência.
-  const rules = previousRules.filter((rule) => {
-    if (rule.startMonth === startMonth) {
-      return false;
-    }
+  const rules = (habit.recurringMonthlyGoals ?? [])
+  .filter((rule) => rule.startMonth !== startMonth);
 
-    if (
-      goal !== null &&
-      rule.startMonth > startMonth &&
-      rule.goal === null
-    ) {
-      return false;
-    }
-
-    return true;
-  });
-
-  // Adiciona a nova regra uma única vez.
-  rules.push({ startMonth, goal });
-
-  // Organiza as regras cronologicamente.
-  rules.sort((a, b) =>
-    a.startMonth.localeCompare(b.startMonth)
-  );
-
-  console.log(
-    'Regras depois da atualização:',
-    JSON.stringify(rules)
-  );
-
+  // Adiciona apenas uma regra para o mês escolhido.
   rules.push({ startMonth, goal });
 
   rules.sort((a, b) =>
@@ -299,8 +270,6 @@ export async function updateRecurringMonthlyGoal(
 
   const monthlyGoals = { ...(habit.monthlyGoals ?? {}) };
 
-  // Ao ativar a recorrência, a meta do mês inicial
-  // passa a ser controlada pela regra recorrente.
   if (goal !== null) {
     delete monthlyGoals[startMonth];
   }
@@ -318,4 +287,22 @@ export async function updateRecurringMonthlyGoal(
   );
 
   return updatedHabit;
+}
+
+export async function updateHabitDefaultMonthlyGoal(
+  habitId: string,
+  goal: number | null
+): Promise<Habit | undefined> {
+  const today = new Date();
+
+  const currentMonth =
+    `${today.getFullYear()}-${String(
+      today.getMonth() + 1
+    ).padStart(2, '0')}`;
+
+  return updateRecurringMonthlyGoal(
+    habitId,
+    currentMonth,
+    goal
+  );
 }
