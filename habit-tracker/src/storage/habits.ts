@@ -258,25 +258,19 @@ export async function updateRecurringMonthlyGoal(
 
   if (!habit) return undefined;
 
-  const rules = (habit.recurringMonthlyGoals ?? [])
-  .filter((rule) => rule.startMonth !== startMonth);
+  const rules: RecurringMonthlyGoal[] = (
+    habit.recurringMonthlyGoals ?? []
+  ).filter((rule) => rule.startMonth !== startMonth);
 
-  // Adiciona apenas uma regra para o mês escolhido.
+  // Adiciona a nova regra para o mês escolhido.
   rules.push({ startMonth, goal });
 
   rules.sort((a, b) =>
     a.startMonth.localeCompare(b.startMonth)
   );
 
-  const monthlyGoals = { ...(habit.monthlyGoals ?? {}) };
-
-  if (goal !== null) {
-    delete monthlyGoals[startMonth];
-  }
-
   const updatedHabit: Habit = {
     ...habit,
-    monthlyGoals,
     recurringMonthlyGoals: rules,
   };
 

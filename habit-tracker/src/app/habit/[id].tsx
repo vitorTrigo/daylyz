@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
+    Modal,
     ScrollView,
     StyleSheet,
     Text,
@@ -20,7 +21,6 @@ import {
     toggleHabitDay,
     updateHabitName,
     updateHabitMonthlyGoal,
-    updateRecurringMonthlyGoal,
     getHabitMonthlyGoal,
     updateHabitDefaultMonthlyGoal,
 } from '../../storage/habits';
@@ -42,8 +42,9 @@ export default function HabitDetailsScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savingGoal, setSavingGoal] = useState(false);
-  const [editingDefaultGoal, setEditingDefaultGoal] = useState(false);
   const [defaultGoalInput, setDefaultGoalInput] = useState('');
+  const [menuVisible, setMenuVisible] = useState(false);
+  const [defaultGoalModalVisible, setDefaultGoalModalVisible] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -240,48 +241,6 @@ export default function HabitDetailsScreen() {
     }
   }
 
-    async function handleSaveRecurringGoal(
-      month: string,
-      goal: number | null
-    ): Promise<boolean> {
-      if (!id || savingGoal || saving || processing) {
-        return false;
-      }
-
-      setSavingGoal(true);
-
-      try {
-        const updatedHabit = await updateRecurringMonthlyGoal(
-          id,
-          month,
-          goal
-        );
-
-        console.log('Mês configurado:', month);
-        console.log('Meta configurada:', goal);
-        console.log(
-          'Regras recorrentes salvas:',
-          JSON.stringify(updatedHabit?.recurringMonthlyGoals)
-        );
-
-        if (!updatedHabit) {
-          Alert.alert('Erro', 'Hábito não encontrado.');
-          return false;
-        }
-
-        setHabit(updatedHabit);
-        return true;
-      } catch {
-        Alert.alert(
-          'Erro',
-          'Não foi possível salvar a meta recorrente.'
-        );
-        return false;
-      } finally {
-        setSavingGoal(false);
-      }
-    }
-
     function getCurrentDefaultGoal(): number | null {
       if (!habit) return null;
 
@@ -305,7 +264,7 @@ export default function HabitDetailsScreen() {
         currentGoal === null ? '' : String(currentGoal)
       );
 
-      setEditingDefaultGoal(true);
+      setDefaultGoalModalVisible(true);
     }
 
     async function handleSaveDefaultGoal(goal: number | null) {
@@ -333,7 +292,7 @@ export default function HabitDetailsScreen() {
         }
 
         setHabit(updatedHabit);
-        setEditingDefaultGoal(false);
+        setDefaultGoalModalVisible(false);
       } catch {
         Alert.alert('Erro', 'Não foi possível salvar a meta padrão.');
       } finally {
@@ -353,23 +312,57 @@ export default function HabitDetailsScreen() {
             <Text style={styles.backText}>‹ Voltar</Text>
         </TouchableOpacity>
 
-        <View style={styles.topActions}>
+          <View style={styles.menuContainer}>
             <TouchableOpacity
-            style={styles.editButton}
-            onPress={startEditing}
-            disabled={processing || saving || !habit}
+              style={styles.menuButton}
+              onPress={() => setMenuVisible(!menuVisible)}
+              disabled={processing || saving || savingGoal || !habit}
+              accessibilityRole="button"
+              accessibilityLabel="Abrir opções do hábito"
             >
-            <Text style={styles.editButtonText}>Editar</Text>
+              <Text style={styles.menuButtonText}>•••</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity
-            style={styles.deleteButton}
-            onPress={handleDelete}
-            disabled={processing || saving || !habit}
-            >
-            <Text style={styles.deleteButtonText}>Excluir</Text>
-            </TouchableOpacity>
-        </View>
+            {menuVisible && (
+              <View style={styles.menuDropdown}>
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={() => {
+                    setMenuVisible(false);
+                    startEditing();
+                  }}
+                >
+                  <Text style={styles.menuItemText}>Editar nome</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={() => {
+                    setMenuVisible(false);
+                    startEditingDefaultGoal();
+                  }}
+                >
+                  <Text style={styles.menuItemText}>
+                    Configurar meta padrão
+                  </Text>
+                </TouchableOpacity>
+
+                <View style={styles.menuDivider} />
+
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={() => {
+                    setMenuVisible(false);
+                    handleDelete();
+                  }}
+                >
+                  <Text style={styles.menuDeleteText}>
+                    Excluir hábito
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
         </View>
 
 
@@ -382,7 +375,18 @@ export default function HabitDetailsScreen() {
         ) : (
           <>
             <Text style={styles.subtitle}>SEU PROGRESSO</Text>
+
             <Text style={styles.title}>{habit.name}</Text>
+
+            <View style={styles.defaultGoalIndicator}>
+              <Text style={styles.defaultGoalIndicatorIcon}>◎</Text>
+
+              <Text style={styles.defaultGoalIndicatorText}>
+                {getCurrentDefaultGoal() === null
+                  ? 'Meta padrão não definida'
+                  : `Meta padrão: ${getCurrentDefaultGoal()} dias/mês`}
+              </Text>
+            </View>
             
             {editing && (
             <View style={styles.editContainer}>
@@ -428,91 +432,6 @@ export default function HabitDetailsScreen() {
               <Text style={styles.statsLabel}>
                 Dias concluídos
               </Text>
-            </View>
-
-            <View style={styles.defaultGoalCard}>
-              <Text style={styles.defaultGoalTitle}>
-                Meta mensal padrão
-              </Text>
-
-              <Text style={styles.defaultGoalDescription}>
-                Aplicada automaticamente aos meses sem uma meta exclusiva.
-              </Text>
-
-              {editingDefaultGoal ? (
-                <>
-                  <TextInput
-                    style={styles.editInput}
-                    value={defaultGoalInput}
-                    onChangeText={setDefaultGoalInput}
-                    keyboardType="number-pad"
-                    placeholder="Ex.: 20"
-                    placeholderTextColor="#8b949e"
-                    maxLength={2}
-                  />
-
-                  <View style={styles.editActions}>
-                    <TouchableOpacity
-                      style={styles.cancelEditButton}
-                      onPress={() => setEditingDefaultGoal(false)}
-                      disabled={savingGoal}
-                    >
-                      <Text style={styles.cancelEditText}>
-                        Cancelar
-                      </Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={styles.confirmEditButton}
-                      onPress={() => {
-                        const value = defaultGoalInput.trim();
-
-                        if (!/^\d+$/.test(value)) {
-                          Alert.alert('Atenção', 'Digite uma meta válida.');
-                          return;
-                        }
-
-                        handleSaveDefaultGoal(Number(value));
-                      }}
-                      disabled={savingGoal}
-                    >
-                      <Text style={styles.confirmEditText}>
-                        {savingGoal ? 'Salvando...' : 'Salvar'}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  {getCurrentDefaultGoal() !== null && (
-                    <TouchableOpacity
-                      style={styles.removeDefaultGoalButton}
-                      onPress={() => handleSaveDefaultGoal(null)}
-                      disabled={savingGoal}
-                    >
-                      <Text style={styles.removeDefaultGoalText}>
-                        Remover meta padrão
-                      </Text>
-                    </TouchableOpacity>
-                  )}
-                </>
-              ) : (
-                <View style={styles.defaultGoalRow}>
-                  <Text style={styles.defaultGoalValue}>
-                    {getCurrentDefaultGoal() === null
-                      ? 'Não definida'
-                      : `${getCurrentDefaultGoal()} dias/mês`}
-                  </Text>
-
-                  <TouchableOpacity
-                    style={styles.editButton}
-                    onPress={startEditingDefaultGoal}
-                    disabled={savingGoal}
-                  >
-                    <Text style={styles.editButtonText}>
-                      Configurar
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              )}
             </View>
             
             <View style={styles.calendarSection}>
@@ -580,10 +499,97 @@ export default function HabitDetailsScreen() {
             )}
           </>
         )}
-      </ScrollView>
-    </View>
-  );
-}
+            </ScrollView>
+
+            <Modal
+              visible={defaultGoalModalVisible}
+              transparent
+              animationType="fade"
+              onRequestClose={() => {
+                if (!savingGoal) {
+                  setDefaultGoalModalVisible(false);
+                }
+              }}
+            >
+              <View style={styles.modalOverlay}>
+                <View style={styles.modalCard}>
+                  <Text style={styles.modalTitle}>
+                    Meta mensal padrão
+                  </Text>
+
+                  <Text style={styles.modalDescription}>
+                    Define a meta para o mês atual e os próximos,
+                    sem alterar meses anteriores. Metas exclusivas
+                    têm prioridade.
+                  </Text>
+
+                  <Text style={styles.editLabel}>
+                    Quantos dias por mês?
+                  </Text>
+
+                  <TextInput
+                    style={styles.editInput}
+                    value={defaultGoalInput}
+                    onChangeText={setDefaultGoalInput}
+                    keyboardType="number-pad"
+                    placeholder="Ex.: 20"
+                    placeholderTextColor="#8b949e"
+                    maxLength={2}
+                  />
+
+                  <View style={styles.editActions}>
+                    <TouchableOpacity
+                      style={styles.cancelEditButton}
+                      onPress={() => {
+                        setDefaultGoalModalVisible(false);
+                      }}
+                      disabled={savingGoal}
+                    >
+                      <Text style={styles.cancelEditText}>
+                        Cancelar
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.confirmEditButton}
+                      onPress={() => {
+                        const value = defaultGoalInput.trim();
+
+                        if (!/^\d+$/.test(value)) {
+                          Alert.alert(
+                            'Atenção',
+                            'Digite uma meta válida.'
+                          );
+                          return;
+                        }
+
+                        handleSaveDefaultGoal(Number(value));
+                      }}
+                      disabled={savingGoal}
+                    >
+                      <Text style={styles.confirmEditText}>
+                        {savingGoal ? 'Salvando...' : 'Salvar'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {getCurrentDefaultGoal() !== null && (
+                    <TouchableOpacity
+                      style={styles.removeDefaultGoalButton}
+                      onPress={() => handleSaveDefaultGoal(null)}
+                      disabled={savingGoal}
+                    >
+                      <Text style={styles.removeDefaultGoalText}>
+                        Remover meta padrão
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+            </Modal>
+          </View>
+        );
+      }
 
 const styles = StyleSheet.create({
   container: {
@@ -610,7 +616,7 @@ const styles = StyleSheet.create({
     fontSize: 32,
     fontWeight: 'bold',
     marginTop: 8,
-    marginBottom: 28,
+    marginBottom: 8,
   },
   statsCard: {
     backgroundColor: '#161b22',
@@ -780,43 +786,6 @@ const styles = StyleSheet.create({
     color: '#ffffff',
   },
 
-  defaultGoalCard: {
-    backgroundColor: '#161b22',
-    borderWidth: 1,
-    borderColor: '#30363d',
-    borderRadius: 14,
-    padding: 20,
-    marginBottom: 20,
-  },
-
-  defaultGoalTitle: {
-    color: '#f0f6fc',
-    fontSize: 17,
-    fontWeight: '600',
-    marginBottom: 8,
-  },
-
-  defaultGoalDescription: {
-    color: '#8b949e',
-    fontSize: 13,
-    lineHeight: 19,
-    marginBottom: 16,
-  },
-
-  defaultGoalRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: 12,
-  },
-
-  defaultGoalValue: {
-    color: '#3fb950',
-    fontSize: 19,
-    fontWeight: 'bold',
-    flexShrink: 1,
-  },
-
   removeDefaultGoalButton: {
     paddingVertical: 12,
     marginTop: 10,
@@ -827,5 +796,107 @@ const styles = StyleSheet.create({
     color: '#f85149',
     fontSize: 13,
     fontWeight: '600',
+  },
+  menuContainer: {
+    position: 'relative',
+    zIndex: 10,
+  },
+
+  menuButton: {
+    backgroundColor: '#21262d',
+    borderRadius: 8,
+    width: 44,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  menuButtonText: {
+    color: '#f0f6fc',
+    fontSize: 22,
+    fontWeight: 'bold',
+    lineHeight: 26,
+  },
+
+  menuDropdown: {
+    position: 'absolute',
+    top: 46,
+    right: 0,
+    width: 220,
+    backgroundColor: '#161b22',
+    borderWidth: 1,
+    borderColor: '#30363d',
+    borderRadius: 10,
+    paddingVertical: 6,
+    zIndex: 20,
+    elevation: 8,
+  },
+
+  menuItem: {
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+
+  menuItemText: {
+    color: '#f0f6fc',
+    fontSize: 14,
+  },
+
+  menuDivider: {
+    height: 1,
+    backgroundColor: '#30363d',
+    marginVertical: 4,
+  },
+
+  menuDeleteText: {
+    color: '#f85149',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  defaultGoalIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 24,
+  },
+
+  defaultGoalIndicatorIcon: {
+    color: '#3fb950',
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+
+  defaultGoalIndicatorText: {
+    color: '#8b949e',
+    fontSize: 14,
+  },
+
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    justifyContent: 'center',
+    padding: 24,
+  },
+
+  modalCard: {
+    backgroundColor: '#161b22',
+    borderWidth: 1,
+    borderColor: '#30363d',
+    borderRadius: 16,
+    padding: 24,
+  },
+
+  modalTitle: {
+    color: '#f0f6fc',
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 12,
+  },
+
+  modalDescription: {
+    color: '#8b949e',
+    fontSize: 13,
+    lineHeight: 20,
+    marginBottom: 24,
   },
 });
