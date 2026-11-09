@@ -138,10 +138,14 @@ export default function MonthlyCalendar({
 
     const goal = Number(trimmed);
 
-    if (!Number.isInteger(goal) || goal < 1 || goal > 31) {
+    if (
+      !Number.isInteger(goal) ||
+      goal < 1 ||
+      goal > daysInMonth
+    ) {
       Alert.alert(
         'Meta inválida',
-        'Digite um número inteiro entre 1 e 31.'
+        `Digite um número inteiro entre 1 e ${daysInMonth}.`
       );
       return;
     }

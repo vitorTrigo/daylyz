@@ -166,11 +166,21 @@ export async function updateHabitMonthlyGoal(
     throw new Error('Mês inválido.');
   }
 
+  const [year, monthNumber] = month.split('-').map(Number);
+
+  const daysInMonth = new Date(
+    year,
+    monthNumber,
+    0
+  ).getDate();
+
   if (
     goal !== null &&
-    (!Number.isInteger(goal) || goal < 1 || goal > 31)
+    (!Number.isInteger(goal) || goal < 1 || goal > daysInMonth)
   ) {
-    throw new Error('A meta deve ser entre 1 e 31 dias.');
+    throw new Error(
+      `A meta deve ser entre 1 e ${daysInMonth} dias.`
+    );
   }
 
   const habits = await getHabits();

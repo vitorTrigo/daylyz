@@ -92,19 +92,6 @@ export default function HabitDetailsScreen() {
 
       loadHabit();
 
-      async function changeCalendarMode(mode: CalendarMode) {
-        setCalendarMode(mode);
-
-        try {
-          await saveCalendarMode(mode);
-        } catch {
-          Alert.alert(
-            'Erro',
-            'Não foi possível salvar a preferência do calendário.'
-          );
-        }
-      }
-
       return () => {
         active = false;
       };
