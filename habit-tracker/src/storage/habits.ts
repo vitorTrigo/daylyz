@@ -16,6 +16,21 @@ export type Habit = {
 
 const STORAGE_KEY = '@dailyz:habits';
 
+let pendingWrite: Promise<void> = Promise.resolve();
+
+function enqueueHabitMutation<T>(
+  operation: () => Promise<T>
+): Promise<T> {
+  const result = pendingWrite.then(operation);
+
+  pendingWrite = result.then(
+    () => undefined,
+    () => undefined
+  );
+
+  return result;
+}
+
 const initialHabits: Habit[] = [
   {
     id: '1',
@@ -37,44 +52,149 @@ const initialHabits: Habit[] = [
   },
 ];
 
-export async function getHabits(): Promise<Habit[]> {
-  const stored = await AsyncStorage.getItem(STORAGE_KEY);
-
-  if (stored !== null) {
-    return JSON.parse(stored) as Habit[];
-  }
-
-  // Cria os hábitos de exemplo somente na primeira execução.
-  await AsyncStorage.setItem(
-    STORAGE_KEY,
-    JSON.stringify(initialHabits)
-  );
-
-  return initialHabits;
+function isValidMonthKey(value: string): boolean {
+  return /^\d{4}-(0[1-9]|1[0-2])$/.test(value);
 }
 
-export async function saveHabits(habits: Habit[]): Promise<void> {
+function isValidGoal(value: unknown): value is number {
+  return (
+    typeof value === 'number' &&
+    Number.isInteger(value) &&
+    value >= 1 &&
+    value <= 31
+  );
+}
+
+function isValidHabit(value: unknown): value is Habit {
+  if (
+    typeof value !== 'object' ||
+    value === null ||
+    Array.isArray(value)
+  ) {
+    return false;
+  }
+
+  const habit = value as Record<string, unknown>;
+
+  if (
+    typeof habit.id !== 'string' ||
+    typeof habit.name !== 'string' ||
+    typeof habit.emoji !== 'string' ||
+    !Array.isArray(habit.completedDays) ||
+    !habit.completedDays.every(
+      (day) => typeof day === 'string'
+    )
+  ) {
+    return false;
+  }
+
+  if (habit.monthlyGoals !== undefined) {
+    if (
+      typeof habit.monthlyGoals !== 'object' ||
+      habit.monthlyGoals === null ||
+      Array.isArray(habit.monthlyGoals)
+    ) {
+      return false;
+    }
+
+    const goals = habit.monthlyGoals as Record<string, unknown>;
+
+    if (
+      !Object.entries(goals).every(
+        ([month, goal]) =>
+          isValidMonthKey(month) && isValidGoal(goal)
+      )
+    ) {
+      return false;
+    }
+  }
+
+  if (habit.recurringMonthlyGoals !== undefined) {
+    if (
+      !Array.isArray(habit.recurringMonthlyGoals) ||
+      !habit.recurringMonthlyGoals.every((rule: unknown) => {
+        if (
+          typeof rule !== 'object' ||
+          rule === null ||
+          Array.isArray(rule)
+        ) {
+          return false;
+        }
+
+        const entry = rule as Record<string, unknown>;
+
+        return (
+          typeof entry.startMonth === 'string' &&
+          isValidMonthKey(entry.startMonth) &&
+          (entry.goal === null || isValidGoal(entry.goal))
+        );
+      })
+    ) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+async function readHabitsFromStorage(): Promise<Habit[]> {
+  const stored = await AsyncStorage.getItem(STORAGE_KEY);
+
+  if (stored === null) {
+    await AsyncStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify(initialHabits)
+    );
+
+    return initialHabits;
+  }
+
+  const parsed: unknown = JSON.parse(stored);
+
+  if (
+    !Array.isArray(parsed) ||
+    !parsed.every(isValidHabit)
+  ) {
+    throw new Error(
+      'Os dados armazenados dos hábitos são inválidos.'
+    );
+  }
+
+  return parsed;
+}
+
+export function getHabits(): Promise<Habit[]> {
+  return enqueueHabitMutation(
+    readHabitsFromStorage
+  );
+}
+
+async function saveHabits(habits: Habit[]): Promise<void> {
   await AsyncStorage.setItem(
     STORAGE_KEY,
     JSON.stringify(habits)
   );
 }
 
-export async function createHabit(name: string): Promise<Habit> {
-  const habits = await getHabits();
+export async function createHabit(
+  name: string
+): Promise<Habit> {
+  return enqueueHabitMutation(async () => {
+    const habits = await readHabitsFromStorage();
 
-  const newHabit: Habit = {
-    id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-    name: name.trim(),
-    emoji: '🎯',
-    completedDays: [],
-    monthlyGoals: {},
-    recurringMonthlyGoals: [],
-  };
+    const newHabit: Habit = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+      name: name.trim(),
+      emoji: '🎯',
+      completedDays: [],
+      monthlyGoals: {},
+      recurringMonthlyGoals: [],
+    };
 
-  await saveHabits([...habits, newHabit]);
+    await saveHabits([...habits, newHabit]);
 
-  return newHabit;
+    return newHabit;
+  });
 }
 
 export async function getHabitById(
@@ -89,28 +209,32 @@ export async function toggleHabitDay(
   habitId: string,
   date: string
 ): Promise<Habit | undefined> {
-  const habits = await getHabits();
+  return enqueueHabitMutation(async () => {
+    const habits = await readHabitsFromStorage();
 
-  const habit = habits.find((item) => item.id === habitId);
+    const habit = habits.find(
+      (item) => item.id === habitId
+    );
 
-  if (!habit) return undefined;
+    if (!habit) return undefined;
 
-  const completed = habit.completedDays.includes(date);
+    const completed = habit.completedDays.includes(date);
 
-  const updatedHabit: Habit = {
-    ...habit,
-    completedDays: completed
-      ? habit.completedDays.filter((day) => day !== date)
-      : [...habit.completedDays, date],
-  };
+    const updatedHabit: Habit = {
+      ...habit,
+      completedDays: completed
+        ? habit.completedDays.filter((day) => day !== date)
+        : [...habit.completedDays, date],
+    };
 
-  const updatedHabits = habits.map((item) =>
-    item.id === habitId ? updatedHabit : item
-  );
+    const updatedHabits = habits.map((item) =>
+      item.id === habitId ? updatedHabit : item
+    );
 
-  await saveHabits(updatedHabits);
+    await saveHabits(updatedHabits);
 
-  return updatedHabit;
+    return updatedHabit;
+  });
 }
 
 export async function updateHabitName(
@@ -123,38 +247,42 @@ export async function updateHabitName(
     throw new Error('O nome do hábito não pode ficar vazio.');
   }
 
-  const habits = await getHabits();
+  return enqueueHabitMutation(async () => {
+    const habits = await readHabitsFromStorage();
 
-  const habit = habits.find((item) => item.id === habitId);
+    const habit = habits.find(
+      (item) => item.id === habitId
+    );
 
-  if (!habit) {
-    return undefined;
-  }
+    if (!habit) return undefined;
 
-  const updatedHabit: Habit = {
-    ...habit,
-    name,
-  };
+    const updatedHabit: Habit = {
+      ...habit,
+      name,
+    };
 
-  const updatedHabits = habits.map((item) =>
-    item.id === habitId ? updatedHabit : item
-  );
+    await saveHabits(
+      habits.map((item) =>
+        item.id === habitId ? updatedHabit : item
+      )
+    );
 
-  await saveHabits(updatedHabits);
-
-  return updatedHabit;
+    return updatedHabit;
+  });
 }
 
 export async function deleteHabit(
   habitId: string
 ): Promise<void> {
-  const habits = await getHabits();
+  return enqueueHabitMutation(async () => {
+    const habits = await readHabitsFromStorage();
 
-  const updatedHabits = habits.filter(
-    (item) => item.id !== habitId
-  );
+    const updatedHabits = habits.filter(
+      (item) => item.id !== habitId
+    );
 
-  await saveHabits(updatedHabits);
+    await saveHabits(updatedHabits);
+  });
 }
 
 export async function updateHabitMonthlyGoal(
@@ -162,7 +290,7 @@ export async function updateHabitMonthlyGoal(
   month: string,
   goal: number | null
 ): Promise<Habit | undefined> {
-  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
+  if (!isValidMonthKey(month)) {
     throw new Error('Mês inválido.');
   }
 
@@ -183,31 +311,33 @@ export async function updateHabitMonthlyGoal(
     );
   }
 
-  const habits = await getHabits();
-  const habit = habits.find((item) => item.id === habitId);
+  return enqueueHabitMutation(async () => {
+    const habits = await readHabitsFromStorage();
+    const habit = habits.find((item) => item.id === habitId);
 
-  if (!habit) return undefined;
+    if (!habit) return undefined;
 
-  const monthlyGoals = { ...(habit.monthlyGoals ?? {}) };
+    const monthlyGoals = { ...(habit.monthlyGoals ?? {}) };
 
-  if (goal === null) {
-    delete monthlyGoals[month];
-  } else {
-    monthlyGoals[month] = goal;
-  }
+    if (goal === null) {
+      delete monthlyGoals[month];
+    } else {
+      monthlyGoals[month] = goal;
+    }
 
-  const updatedHabit: Habit = {
-    ...habit,
-    monthlyGoals,
-  };
+    const updatedHabit: Habit = {
+      ...habit,
+      monthlyGoals,
+    };
 
-  await saveHabits(
-    habits.map((item) =>
-      item.id === habitId ? updatedHabit : item
-    )
-  );
+    await saveHabits(
+      habits.map((item) =>
+        item.id === habitId ? updatedHabit : item
+      )
+    );
 
-  return updatedHabit;
+    return updatedHabit;
+  });
 }
 
 export function getHabitMonthlyGoal(
@@ -252,7 +382,7 @@ export async function updateRecurringMonthlyGoal(
   startMonth: string,
   goal: number | null
 ): Promise<Habit | undefined> {
-  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(startMonth)) {
+  if (!isValidMonthKey(startMonth)) {
     throw new Error('Mês inválido.');
   }
 
@@ -263,34 +393,35 @@ export async function updateRecurringMonthlyGoal(
     throw new Error('A meta deve ser entre 1 e 31 dias.');
   }
 
-  const habits = await getHabits();
-  const habit = habits.find((item) => item.id === habitId);
+  return enqueueHabitMutation(async () => {
+    const habits = await readHabitsFromStorage();
+    const habit = habits.find((item) => item.id === habitId);
 
-  if (!habit) return undefined;
+    if (!habit) return undefined;
 
-  const rules: RecurringMonthlyGoal[] = (
-    habit.recurringMonthlyGoals ?? []
-  ).filter((rule) => rule.startMonth !== startMonth);
+    const rules: RecurringMonthlyGoal[] = (
+      habit.recurringMonthlyGoals ?? []
+    ).filter((rule) => rule.startMonth !== startMonth);
 
-  // Adiciona a nova regra para o mês escolhido.
-  rules.push({ startMonth, goal });
+    rules.push({ startMonth, goal });
 
-  rules.sort((a, b) =>
-    a.startMonth.localeCompare(b.startMonth)
-  );
+    rules.sort((a, b) =>
+      a.startMonth.localeCompare(b.startMonth)
+    );
 
-  const updatedHabit: Habit = {
-    ...habit,
-    recurringMonthlyGoals: rules,
-  };
+    const updatedHabit: Habit = {
+      ...habit,
+      recurringMonthlyGoals: rules,
+    };
 
-  await saveHabits(
-    habits.map((item) =>
-      item.id === habitId ? updatedHabit : item
-    )
-  );
+    await saveHabits(
+      habits.map((item) =>
+        item.id === habitId ? updatedHabit : item
+      )
+    );
 
-  return updatedHabit;
+    return updatedHabit;
+  });
 }
 
 export async function updateHabitDefaultMonthlyGoal(
